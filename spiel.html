@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Pétanque – Ziel setzen &amp; Kugeln werfen</title>
+<style>
+  :root {
+    --panel: rgba(18, 26, 32, 0.72);
+    --line: rgba(255, 255, 255, 0.16);
+    --accent: #e8b94c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9fc6e8; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #f5f2ea; }
+  canvas { display: block; cursor: crosshair; touch-action: none; }
+
+  #ui {
+    position: fixed; top: 16px; left: 16px; z-index: 10;
+    width: min(310px, calc(100vw - 32px));
+    padding: 16px 18px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 10px 35px rgba(0,0,0,.25);
+    pointer-events: none;
+  }
+  #ui h1 { margin: 0 0 6px; font-size: 17px; letter-spacing: .02em; }
+  #ui p { margin: 0 0 10px; font-size: 12.5px; line-height: 1.5; color: #d8dedc; }
+  #ui .keys { font-size: 11.5px; color: #b9c3c1; line-height: 1.6; }
+  #ui kbd {
+    background: rgba(255,255,255,.12); border: 1px solid var(--line);
+    border-radius: 5px; padding: 1px 5px; font: inherit; font-size: 11px;
+  }
+  .row { display: flex; gap: 8px; margin-top: 12px; pointer-events: auto; }
+  button {
+    flex: 1; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600;
+    color: #1b1c1a; background: var(--accent); border: 0; border-radius: 9px;
+    padding: 9px 10px; transition: transform .12s ease, filter .12s ease;
+  }
+  button.secondary { background: rgba(255,255,255,.12); color: #f5f2ea; border: 1px solid var(--line); }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: translateY(1px); }
+
+  #score {
+    position: fixed; left: 16px; bottom: 16px; z-index: 10;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    padding: 11px 15px; font-variant-numeric: tabular-nums; pointer-events: none;
+  }
+  #score .big { font-size: 19px; font-weight: 700; color: var(--accent); }
+  #score .small { font-size: 11.5px; color: #c6cfcd; margin-top: 2px; }
+
+  #status {
+    position: fixed; left: 50%; top: 22px; transform: translateX(-50%); z-index: 10;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 18px; font-size: 12.5px; letter-spacing: .02em;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    pointer-events: none; transition: opacity .25s ease;
+  }
+  #hint {
+    position: fixed; right: 16px; bottom: 16px; z-index: 10;
+    font-size: 11.5px; color: rgba(255,255,255,.85); text-align: right;
+    text-shadow: 0 1px 4px rgba(0,0,0,.5); pointer-events: none; line-height: 1.5;
+  }
+  @media (max-width: 620px) {
+    #hint { display: none; } #status { top: auto; bottom: 84px; }
+    .mode-switch{top:10px;right:10px;padding:7px 12px 7px 8px;font-size:12px;gap:9px;border-width:3px}
+    .mode-switch .track{width:58px;height:30px;border-width:3px}
+    .mode-switch .knob{width:20px;height:20px;border-width:2px;top:2px;left:2px}
+    .mode-switch input:checked + .track .knob{transform:translateX(27px)}
+  }
+
+  #canvas-wrap{position:fixed;inset:0;z-index:0}
+  .mode-switch{
+    position:fixed;top:18px;right:18px;z-index:12;display:flex;align-items:center;gap:14px;
+    background:rgba(247,239,224,.97);border:4px solid var(--ink);border-radius:999px;
+    padding:10px 22px 10px 12px;font-size:17px;font-weight:900;text-transform:uppercase;
+    letter-spacing:.05em;box-shadow:7px 8px 0 rgba(43,42,33,.85);cursor:pointer;user-select:none;
+    animation:switch-pop 2.4s ease-in-out infinite;
+  }
+  @keyframes switch-pop{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}}
+  .mode-switch input{position:absolute;opacity:0;width:0;height:0}
+  .mode-switch .track{
+    position:relative;width:78px;height:40px;background:#bfe0f5;
+    border:4px solid var(--ink);border-radius:999px;transition:background .2s;
+    box-shadow:inset 0 2px 0 rgba(0,0,0,.12);
+  }
+  .mode-switch .knob{
+    position:absolute;top:2px;left:2px;width:28px;height:28px;
+    background:var(--ochre);border:3px solid var(--ink);border-radius:50%;
+    transition:transform .2s ease,background .2s ease;
+  }
+  .mode-switch input:checked + .track{background:#e7f2fa}
+  .mode-switch input:checked + .track .knob{transform:translateX(36px);background:#e0493d}
+  .mode-switch input:focus-visible + .track{outline:4px solid var(--terra);outline-offset:3px}
+</style>
+</head>
+<body>
+<div id="canvas-wrap"></div>
+
+<div id="ui">
+  <h1>🥐 Pétanque am Straßenrand</h1>
+  <p>Setze das <strong>Cochonnet</strong> (das kleine Holzziel) mit einem Klick auf den Boden. Der Spieler legt anschließend seine drei Kugeln dorthin.</p>
+  <div class="keys">
+    <kbd>Klick</kbd> Ziel platzieren &nbsp;·&nbsp; <kbd>Ziehen</kbd> Kamera drehen<br>
+    <kbd>Scrollen</kbd> Zoom &nbsp;·&nbsp; <kbd>R</kbd> Kamera zurücksetzen
+  </div>
+  <div class="row">
+    <button id="rethrow">Kugeln neu werfen</button>
+    <button id="reset" class="secondary">Neu beginnen</button>
+  </div>
+</div>
+
+
+<label class="mode-switch" title="Sommer- oder Weihnachtsmodus">
+  <input type="checkbox" id="xmas-toggle" />
+  <span class="track"><span class="knob"></span></span>
+  <span id="mode-label">Sommer</span>
+</label>
+
+<div id="status">Klicke auf den Boden, um das Ziel zu setzen</div>
+
+<div id="score">
+  <div class="big" id="score-big">–</div>
+  <div class="small" id="score-small">Noch keine Kugel geworfen</div>
+</div>
+
+<div id="hint">Boule ≈ 7 cm · Cochonnet ≈ 3 cm<br>(leicht vergrößert dargestellt)</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// In den Comic-Rahmen der Seite eingebettet
+const wrap = document.getElementById('canvas-wrap');
+
+/* ============================================================
+   Grundszene
+============================================================ */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+wrap.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xe8d7b8, 26, 70);
+
+const camera = new THREE.PerspectiveCamera(48, wrap.clientWidth / wrap.clientHeight, 0.1, 200);
+
+// Sanfter Himmel mit Farbverlauf
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(120, 32, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    uniforms: {
+      top: { value: new THREE.Color(0x59b4ee) },
+      bottom: { value: new THREE.Color(0xf2e7d4) }
+    },
+    vertexShader: `varying vec3 vPos;
+      void main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `uniform vec3 top; uniform vec3 bottom; varying vec3 vPos;
+      void main(){ float h = smoothstep(-0.15, 0.75, normalize(vPos).y);
+                   gl_FragColor = vec4(mix(bottom, top, h), 1.0); }`
+  })
+);
+scene.add(sky);
+
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d7655, 1.35);
+scene.add(hemiLight);
+const sun = new THREE.DirectionalLight(0xfff2d8, 2.4);
+sun.position.set(7, 13, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -14; sun.shadow.camera.right = 14;
+sun.shadow.camera.top = 14; sun.shadow.camera.bottom = -14;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.02;
+scene.add(sun);
+
+/* ============================================================
+   Texturen (prozedural erzeugt, keine externen Bilder)
+============================================================ */
+function gravelTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const x = c.getContext('2d');
+  x.fillStyle = '#dcc39c';
+  x.fillRect(0, 0, 512, 512);
+  const tones = ['#c9ad82', '#e6d2ab', '#a98d64', '#f0e2c4', '#bfa47a', '#f7ecd6', '#8f7a5c'];
+  for (let i = 0; i < 14000; i++) {
+    x.globalAlpha = 0.25 + Math.random() * 0.55;
+    x.fillStyle = tones[(Math.random() * tones.length) | 0];
+    const s = 1 + Math.random() * 3.2;
+    x.fillRect(Math.random() * 512, Math.random() * 512, s, s * (0.6 + Math.random() * 0.8));
+  }
+  x.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(10, 10);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+
+function snowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const x = c.getContext('2d');
+  x.fillStyle = '#f3f8fb';
+  x.fillRect(0, 0, 512, 512);
+  const tones = ['#ffffff', '#e8f2f8', '#dcecf6', '#ffffff', '#cfe2ef'];
+  for (let i = 0; i < 7000; i++) {
+    x.globalAlpha = 0.25 + Math.random() * 0.6;
+    x.fillStyle = tones[(Math.random() * tones.length) | 0];
+    const r = 0.5 + Math.random() * 2.4;
+    x.beginPath(); x.arc(Math.random() * 512, Math.random() * 512, r, 0, Math.PI * 2); x.fill();
+  }
+  x.globalAlpha = 0.16;
+  x.fillStyle = '#9dbcd0';
+  for (let i = 0; i < 200; i++) {
+    x.beginPath();
+    x.ellipse(Math.random() * 512, Math.random() * 512, 8 + Math.random() * 22, 3 + Math.random() * 7,
+      Math.random() * Math.PI, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(10, 10);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+
+function bouleTexture() {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 256;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#d7dde1'); g.addColorStop(.5, '#aab4bd'); g.addColorStop(1, '#c9d0d5');
+  x.fillStyle = g; x.fillRect(0, 0, 512, 256);
+  // eingravierte Rillen
+  x.fillStyle = 'rgba(60,72,82,.45)';
+  for (const px of [70, 82, 250, 262, 430, 442]) x.fillRect(px, 0, 5, 256);
+  x.fillStyle = 'rgba(255,255,255,.45)';
+  for (const px of [75, 255, 435]) x.fillRect(px, 0, 2, 256);
+  // kleiner Markierungspunkt
+  x.fillStyle = '#2d3b45';
+  x.beginPath(); x.arc(160, 60, 9, 0, Math.PI * 2); x.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/* ============================================================
+   Boden & Piste
+============================================================ */
+const summerGroundTex = gravelTexture();
+const winterGroundTex = snowTexture();
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(120, 120),
+  new THREE.MeshStandardMaterial({ map: summerGroundTex, roughness: 1, color: 0xffffff })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const COURT = { xMin: -8.5, xMax: 8.5, zMin: -3.6, zMax: 3.6 };
+const chalkMat = new THREE.MeshBasicMaterial({ color: 0xfff8e8, transparent: true, opacity: 0.6 });
+function chalkLine(w, d, x, z) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), chalkMat);
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(x, 0.012, z);
+  scene.add(m);
+}
+chalkLine(COURT.xMax - COURT.xMin, 0.045, 0, COURT.zMin);
+chalkLine(COURT.xMax - COURT.xMin, 0.045, 0, COURT.zMax);
+chalkLine(0.045, COURT.zMax - COURT.zMin, COURT.xMin, 0);
+chalkLine(0.045, COURT.zMax - COURT.zMin, COURT.xMax, 0);
+
+const PLAYER_POS = new THREE.Vector3(-5.2, 0, 0);
+const circle = new THREE.Mesh(
+  new THREE.RingGeometry(0.62, 0.66, 48),
+  new THREE.MeshBasicMaterial({ color: 0xfff8e8, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
+);
+circle.rotation.x = -Math.PI / 2;
+circle.position.set(PLAYER_POS.x, 0.013, PLAYER_POS.z);
+scene.add(circle);
+
+/* ============================================================
+   Materialien & Geometrien
+============================================================ */
+// Gestufte Toon-Schattierung passend zum Comic
+const gradientMap = new THREE.DataTexture(new Uint8Array([90, 150, 215, 255]), 4, 1, THREE.RedFormat);
+gradientMap.minFilter = gradientMap.magFilter = THREE.NearestFilter;
+gradientMap.needsUpdate = true;
+
+function inkOutline(mesh, scale = 1.05) {
+  const outline = new THREE.Mesh(
+    mesh.geometry,
+    new THREE.MeshBasicMaterial({ color: 0x2b2a21, side: THREE.BackSide })
+  );
+  outline.scale.setScalar(scale);
+  mesh.add(outline);
+}
+
+const BOULE_R = 0.19;
+const COCHONNET_R = 0.085;
+
+const bouleGeo = new THREE.SphereGeometry(BOULE_R, 32, 24);
+const bouleMat = new THREE.MeshStandardMaterial({
+  map: bouleTexture(), color: 0xffffff, metalness: 0.88, roughness: 0.3
+});
+const woodMat = new THREE.MeshToonMaterial({ color: 0xd8a45c, gradientMap });
+const skinMat = new THREE.MeshToonMaterial({ color: 0xe0a980, gradientMap });
+const shirtMat = new THREE.MeshToonMaterial({ color: 0x2f6fb0, gradientMap });
+const pantsMat = new THREE.MeshToonMaterial({ color: 0x3c4a55, gradientMap });
+const shoeMat = new THREE.MeshToonMaterial({ color: 0x4a3a2c, gradientMap });
+const beretMat = new THREE.MeshToonMaterial({ color: 0x505437, gradientMap });
+const darkMat = new THREE.MeshBasicMaterial({ color: 0x2b2a21 });
+const whiteMat = new THREE.MeshToonMaterial({ color: 0xfaf8f2, gradientMap });
+const redMat = new THREE.MeshToonMaterial({ color: 0xc62d2d, gradientMap });
+const brownMat = new THREE.MeshToonMaterial({ color: 0x8b5a3c, gradientMap });
+const antlerMat = new THREE.MeshToonMaterial({ color: 0xc9ab7d, gradientMap });
+const noseMat = new THREE.MeshToonMaterial({ color: 0xe23b3b, gradientMap });
+const goldMat = new THREE.MeshToonMaterial({ color: 0xe8b94c, gradientMap });
+const muzzleMat = new THREE.MeshToonMaterial({ color: 0xd9b48b, gradientMap });
+const firMat = new THREE.MeshToonMaterial({ color: 0x2f6b48, gradientMap });
+
+/* ============================================================
+   Spieler (stilisiert, Blickrichtung = lokales +Z)
+============================================================ */
+const player = new THREE.Group();
+player.position.copy(PLAYER_POS);
+scene.add(player);
+
+const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.27, 0.5, 5, 16), shirtMat);
+torso.position.y = 1.16;
+torso.castShadow = true;
+player.add(torso);
+
+const hips = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.12, 4, 16), pantsMat);
+hips.position.y = 0.8; hips.castShadow = true;
+player.add(hips);
+
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.175, 24, 18), skinMat);
+head.position.y = 1.82; head.castShadow = true;
+player.add(head);
+
+// Augen & Schnurrbart (dezent)
+for (const sx of [-1, 1]) {
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), darkMat);
+  eye.position.set(sx * 0.06, 1.85, 0.157);
+  player.add(eye);
+}
+const moustache = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), whiteMat);
+moustache.scale.set(1.35, 0.42, 0.45);
+moustache.position.set(0, 1.765, 0.16);
+player.add(moustache);
+
+// Rauschebart: immer sichtbar, im Sommer wie im Winter
+const beard = new THREE.Group();
+player.add(beard);
+const beardMain = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.34, 14), whiteMat);
+beardMain.position.set(0, 1.63, 0.105);
+beardMain.rotation.x = Math.PI;
+beard.add(beardMain);
+const beardTop = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 10), whiteMat);
+beardTop.position.set(0, 1.75, 0.115);
+beardTop.scale.set(1.3, 0.6, 0.6);
+beard.add(beardTop);
+for (const sx of [-1, 1]) {
+  const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10), whiteMat);
+  cheek.position.set(sx * 0.11, 1.69, 0.09);
+  cheek.scale.set(0.8, 1.1, 0.7);
+  beard.add(cheek);
+}
+
+// Runde, dünne Brille – Sommer-Extras
+const glasses = new THREE.Group();
+player.add(glasses);
+const wireMat = new THREE.MeshBasicMaterial({ color: 0x2b2a21 });
+for (const sx of [-1, 1]) {
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.007, 6, 24), wireMat);
+  rim.position.set(sx * 0.062, 1.85, 0.168);
+  glasses.add(rim);
+  const temple = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.14, 6), wireMat);
+  temple.rotation.y = Math.PI / 2;
+  temple.position.set(sx * 0.135, 1.855, 0.12);
+  glasses.add(temple);
+}
+const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.035, 6), wireMat);
+bridge.rotation.z = Math.PI / 2;
+bridge.position.set(0, 1.85, 0.168);
+glasses.add(bridge);
+
+// Baskenmütze
+const beret = new THREE.Mesh(new THREE.SphereGeometry(0.215, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), beretMat);
+beret.position.set(0.03, 1.94, -0.01);
+beret.rotation.z = -0.14;
+beret.scale.y = 0.65;
+beret.castShadow = true;
+player.add(beret);
+const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.06, 8), beretMat);
+nub.position.set(0.03, 2.03, -0.01);
+player.add(nub);
+const brim = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.022, 8, 24), beretMat);
+brim.rotation.x = Math.PI / 2;
+brim.position.y = 1.935;
+player.add(brim);
+
+// Beine
+for (const sx of [-1, 1]) {
+  const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.105, 0.48, 4, 12), pantsMat);
+  leg.position.set(sx * 0.135, 0.44, sx * 0.045);
+  leg.castShadow = true;
+  player.add(leg);
+  const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.34), shoeMat);
+  shoe.position.set(sx * 0.135, 0.07, 0.1 + sx * 0.045);
+  shoe.castShadow = true;
+  player.add(shoe);
+}
+
+// Arme: Schulter -> Oberarm -> Ellenbogen -> Unterarm -> Hand
+function makeArm(side) {
+  const shoulder = new THREE.Group();
+  shoulder.position.set(side * 0.34, 1.46, 0);
+  player.add(shoulder);
+
+  const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.078, 0.32, 4, 12), shirtMat);
+  upper.position.y = -0.23; upper.castShadow = true;
+  shoulder.add(upper);
+
+  const elbow = new THREE.Group();
+  elbow.position.y = -0.46;
+  shoulder.add(elbow);
+
+  const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.068, 0.27, 4, 12), skinMat);
+  fore.position.y = -0.2; fore.castShadow = true;
+  elbow.add(fore);
+
+  const hand = new THREE.Group();
+  hand.position.y = -0.42;
+  elbow.add(hand);
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.085, 14, 10), skinMat);
+  palm.castShadow = true;
+  hand.add(palm);
+  return { shoulder, elbow, hand };
+}
+const armThrow = makeArm(1);
+const armIdle = makeArm(-1);
+armIdle.shoulder.rotation.x = -0.12;
+armIdle.elbow.rotation.x = -0.25;
+
+/* ------------------------------------------------------------
+   Weihnachts-Outfit: roter Anzug, weißer Bart, Mütze, Rentier
+------------------------------------------------------------ */
+const santaGear = new THREE.Group();
+santaGear.visible = false;
+player.add(santaGear);
+
+const collar = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.055, 8, 24), whiteMat);
+collar.rotation.x = Math.PI / 2; collar.position.y = 1.47; santaGear.add(collar);
+const hem = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.05, 8, 24), whiteMat);
+hem.rotation.x = Math.PI / 2; hem.position.y = 0.86; santaGear.add(hem);
+
+const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.286, 0.286, 0.12, 24, 1, true), darkMat);
+belt.position.y = 0.95; santaGear.add(belt);
+const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.11, 0.045), goldMat);
+buckle.position.set(0, 0.95, 0.286); santaGear.add(buckle);
+
+const santaCuffs = [];
+for (const arm of [armThrow, armIdle]) {
+  const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.032, 8, 16), whiteMat);
+  cuff.rotation.x = Math.PI / 2;
+  cuff.position.y = -0.33;
+  cuff.visible = false;
+  arm.elbow.add(cuff);
+  santaCuffs.push(cuff);
+}
+
+const hat = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.42, 16), redMat);
+hat.position.set(0.02, 2.12, -0.01);
+hat.rotation.z = -0.18;
+santaGear.add(hat);
+const hatBrim = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.05, 8, 20), whiteMat);
+hatBrim.rotation.x = Math.PI / 2;
+hatBrim.position.set(0.02, 1.96, -0.01);
+santaGear.add(hatBrim);
+const pompom = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), whiteMat);
+pompom.position.set(-0.06, 2.34, -0.01);
+santaGear.add(pompom);
+
+// Rentier läuft immer mit dem Spieler mit (als Kind seiner Gruppe)
+const reindeer = new THREE.Group();
+reindeer.position.set(-1.05, 0, -0.25);
+reindeer.scale.setScalar(0.92);
+reindeer.visible = false;
+player.add(reindeer);
+
+const deerBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.55, 5, 14), brownMat);
+deerBody.rotation.x = Math.PI / 2;
+deerBody.position.set(0, 0.82, 0);
+deerBody.castShadow = true;
+reindeer.add(deerBody);
+
+const deerNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.55, 12), brownMat);
+deerNeck.position.set(0, 1.12, 0.38);
+deerNeck.rotation.x = 0.5;
+reindeer.add(deerNeck);
+
+const deerHead = new THREE.Group();
+deerHead.position.set(0, 1.42, 0.6);
+reindeer.add(deerHead);
+const deerHeadMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), brownMat);
+deerHeadMesh.scale.set(1, 0.95, 1.15);
+deerHead.add(deerHeadMesh);
+const deerMuzzle = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 10), muzzleMat);
+deerMuzzle.position.set(0, -0.05, 0.2);
+deerMuzzle.scale.set(1, 0.75, 1.1);
+deerHead.add(deerMuzzle);
+const deerNose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), noseMat);
+deerNose.position.set(0, -0.04, 0.31);
+deerHead.add(deerNose);
+for (const sx of [-1, 1]) {
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), darkMat);
+  eye.position.set(sx * 0.095, 0.05, 0.16);
+  deerHead.add(eye);
+
+  const antler = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, 0.42, 8), antlerMat);
+  antler.position.set(sx * 0.12, 0.36, -0.02);
+  antler.rotation.z = sx * 0.35;
+  deerHead.add(antler);
+  for (let i = 0; i < 2; i++) {
+    const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.22, 6), antlerMat);
+    branch.position.set(sx * (0.19 + i * 0.05), 0.32 + i * 0.11, -0.02);
+    branch.rotation.z = sx * 0.9;
+    deerHead.add(branch);
+  }
+}
+for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.65, 8), brownMat);
+  leg.position.set(sx * 0.16, 0.34, sz * 0.34);
+  leg.castShadow = true;
+  reindeer.add(leg);
+  const hoof = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.09, 8), darkMat);
+  hoof.position.set(sx * 0.16, 0.045, sz * 0.34);
+  reindeer.add(hoof);
+}
+const deerTail = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), whiteMat);
+deerTail.position.set(0, 0.95, -0.55);
+reindeer.add(deerTail);
+const deerCollar = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.035, 8, 18), redMat);
+deerCollar.rotation.x = Math.PI / 2 - 0.3;
+deerCollar.position.set(0, 1.22, 0.46);
+reindeer.add(deerCollar);
+const bell = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), goldMat);
+bell.position.set(0, 1.08, 0.56);
+reindeer.add(bell);
+
+// kräftige Comic-Konturen um die Figur (erst sammeln, dann ergänzen)
+const playerMeshes = [];
+player.traverse(o => { if (o.isMesh) playerMeshes.push(o); });
+playerMeshes.forEach(m => inkOutline(m, 1.055));
+
+/* ============================================================
+   Cochonnet, Markierungen, Deko
+============================================================ */
+const target = new THREE.Mesh(new THREE.SphereGeometry(COCHONNET_R, 24, 16), woodMat);
+target.position.set(0.5, COCHONNET_R, 0);
+target.castShadow = true;
+scene.add(target);
+inkOutline(target, 1.07);
+
+const targetRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.2, 0.25, 40),
+  new THREE.MeshBasicMaterial({ color: 0xffd874, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })
+);
+targetRing.rotation.x = -Math.PI / 2;
+targetRing.position.y = 0.018;
+scene.add(targetRing);
+
+const hoverRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.16, 0.2, 40),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
+);
+hoverRing.rotation.x = -Math.PI / 2;
+hoverRing.position.y = 0.016;
+hoverRing.visible = false;
+scene.add(hoverRing);
+
+// Kiste mit Ersatzkugeln am Rand (im Winter durch Baum ersetzt)
+const crateGroup = new THREE.Group();
+scene.add(crateGroup);
+const crate = new THREE.Mesh(
+  new THREE.BoxGeometry(0.9, 0.45, 0.6),
+  new THREE.MeshStandardMaterial({ color: 0x8a6440, roughness: 0.95 })
+);
+crate.position.set(7.1, 0.225, -3.0);
+crate.rotation.y = -0.18;
+crate.castShadow = true; crate.receiveShadow = true;
+crateGroup.add(crate);
+for (let i = 0; i < 3; i++) {
+  const b = new THREE.Mesh(bouleGeo, bouleMat);
+  b.scale.setScalar(0.82);
+  b.position.set(6.85 + i * 0.36, 0.47, -3.0 + (i % 2) * 0.12);
+  b.castShadow = true;
+  crateGroup.add(b);
+}
+
+/* ------------------------------------------------------------
+   Winterdekoration und fallender Schnee
+------------------------------------------------------------ */
+const winterDecor = new THREE.Group();
+winterDecor.visible = false;
+scene.add(winterDecor);
+
+function snowMound(x, z, size) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), whiteMat);
+  m.scale.set(size, size * 0.3, size * 0.7);
+  m.position.set(x, 0.02, z);
+  m.receiveShadow = true;
+  winterDecor.add(m);
+}
+snowMound(-7.6, -3.3, 1.0);
+snowMound(-3.2, 3.4, 0.8);
+snowMound(4.8, -3.5, 1.1);
+snowMound(8.2, 2.9, 0.9);
+snowMound(-8.2, 1.5, 0.7);
+
+const tree = new THREE.Group();
+tree.position.set(7.0, 0, -2.9);
+winterDecor.add(tree);
+const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.35, 10), brownMat);
+trunk.position.y = 0.18;
+tree.add(trunk);
+for (let i = 0; i < 3; i++) {
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.55 - i * 0.12, 0.7, 12), firMat);
+  cone.position.y = 0.6 + i * 0.42;
+  cone.castShadow = true;
+  tree.add(cone);
+}
+const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.11), goldMat);
+star.position.y = 1.95;
+tree.add(star);
+for (let i = 0; i < 6; i++) {
+  const bauble = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), i % 2 ? goldMat : noseMat);
+  const a = i * 1.05;
+  const r = 0.42 - (i % 3) * 0.08;
+  bauble.position.set(Math.cos(a) * r, 0.72 + ((i * 0.37) % 0.9), Math.sin(a) * r);
+  tree.add(bauble);
+}
+
+const SNOW_COUNT = 260;
+const snowPos = new Float32Array(SNOW_COUNT * 3);
+for (let i = 0; i < SNOW_COUNT; i++) {
+  snowPos[i * 3] = (Math.random() - 0.5) * 22;
+  snowPos[i * 3 + 1] = Math.random() * 9;
+  snowPos[i * 3 + 2] = (Math.random() - 0.5) * 14;
+}
+const snowGeo = new THREE.BufferGeometry();
+snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+const snowFall = new THREE.Points(snowGeo, new THREE.PointsMaterial({
+  color: 0xffffff, size: 0.075, transparent: true, opacity: 0.9, depthWrite: false
+}));
+snowFall.visible = false;
+scene.add(snowFall);
+
+/* ============================================================
+   Tween-Helfer
+============================================================ */
+const tweens = [];
+const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+const easeIn = t => t * t;
+
+function tween(o) {
+  tweens.push({ duration: 1, delay: 0, ease: t => t, update() {}, complete() {}, ...o, elapsed: 0 });
+}
+function updateTweens(dt) {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const tw = tweens[i];
+    tw.elapsed += dt;
+    if (tw.elapsed < tw.delay) continue;
+    const raw = Math.min(1, (tw.elapsed - tw.delay) / tw.duration);
+    tw.update(tw.ease(raw), raw);
+    if (raw >= 1) { tweens.splice(i, 1); tw.complete(); }
+  }
+}
+
+/* ============================================================
+   Wurf-Logik
+============================================================ */
+const boules = [];          // { mesh, dist }
+let heldBoule = null;
+let targetPlaced = false;
+let throwIndex = 0;
+const MAX_BOULES = 3;
+
+const statusEl = document.getElementById('status');
+const scoreBig = document.getElementById('score-big');
+const scoreSmall = document.getElementById('score-small');
+
+function setStatus(text) { statusEl.textContent = text; statusEl.style.opacity = 1; }
+
+function faceTarget() {
+  if (target.position.distanceToSquared(PLAYER_POS) < 0.05) return;
+  player.lookAt(target.position.x, player.position.y, target.position.z);
+}
+
+function clearBoules() {
+  tweens.length = 0;
+  for (const b of boules) scene.remove(b.mesh);
+  boules.length = 0;
+  if (heldBoule) { heldBoule.parent?.remove(heldBoule); heldBoule = null; }
+  armThrow.shoulder.rotation.x = 0;
+  armThrow.elbow.rotation.x = 0;
+  throwIndex = 0;
+  scoreBig.textContent = '–';
+  scoreSmall.textContent = 'Kugeln werden vorbereitet …';
+}
+
+function spawnDust(p) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.08, 0.12, 28),
+    new THREE.MeshBasicMaterial({ color: 0xe8dcc0, transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(p.x, 0.02, p.z);
+  scene.add(ring);
+  tween({
+    duration: 0.65, ease: easeOut,
+    update: t => { ring.scale.setScalar(1 + t * 3.5); ring.material.opacity = 0.65 * (1 - t); },
+    complete: () => { scene.remove(ring); ring.geometry.dispose(); ring.material.dispose(); }
+  });
+}
+
+function placeTarget(p) {
+  clearBoules();
+  targetPlaced = true;
+  hoverRing.visible = false;
+  const from = new THREE.Vector3(p.x, 1.6, p.z);
+  target.position.set(p.x, 1.6, p.z);
+  targetRing.position.set(p.x, 0.018, p.z);
+  setStatus('Ziel gesetzt – der Spieler legt an …');
+
+  tween({
+    duration: 0.55, ease: easeIn,
+    update: t => { target.position.y = THREE.MathUtils.lerp(from.y, COCHONNET_R + 0.12, t); },
+    complete: () => {
+      tween({
+        duration: 0.28, ease: easeOut,
+        update: t => { target.position.y = COCHONNET_R + 0.12 * (1 - t) + Math.sin(t * Math.PI) * 0.04; },
+        complete: () => {
+          target.position.y = COCHONNET_R;
+          spawnDust(p);
+          faceTarget();
+          setStatus(`Wurf 1 von ${MAX_BOULES}`);
+          tween({ duration: 0.35, delay: 0.15, complete: throwNextBoule });
+        }
+      });
+    }
+  });
+}
+
+function throwNextBoule() {
+  if (throwIndex >= MAX_BOULES) {
+    const best = boules.length ? Math.min(...boules.map(b => b.dist)) : Infinity;
+    setStatus(best < 0.4 ? 'Sehr nah dran – schöner Wurf!' : 'Alle Kugeln geworfen – neu platzieren?');
+    return;
+  }
+  throwIndex++;
+  faceTarget();
+  setStatus(`Wurf ${throwIndex} von ${MAX_BOULES}`);
+
+  // Zeigen, wie nah der Spieler kommen will: later Kugeln streuen etwas mehr
+  const scatter = 0.22 + throwIndex * 0.11 + Math.random() * 0.3;
+  const ang = Math.random() * Math.PI * 2;
+  const final = new THREE.Vector3(
+    THREE.MathUtils.clamp(target.position.x + Math.cos(ang) * scatter, COURT.xMin + 0.3, COURT.xMax - 0.3),
+    BOULE_R,
+    THREE.MathUtils.clamp(target.position.z + Math.sin(ang) * scatter, COURT.zMin + 0.3, COURT.zMax - 0.3)
+  );
+  const dir = final.clone().sub(PLAYER_POS).setY(0).normalize();
+  const rollDist = 0.35 + Math.random() * 0.45;
+  const landing = final.clone().addScaledVector(dir, -rollDist);
+  landing.y = BOULE_R;
+
+  // Kugel in der Hand erscheint
+  heldBoule = new THREE.Mesh(bouleGeo, bouleMat);
+  heldBoule.castShadow = true;
+  armThrow.hand.add(heldBoule);
+
+  const arm = armThrow.shoulder;
+  const elbow = armThrow.elbow;
+  const armStart = arm.rotation.x;
+  const elbowStart = elbow.rotation.x;
+
+  // Ausholen
+  tween({
+    duration: 0.5, ease: easeInOut,
+    update: t => {
+      arm.rotation.x = THREE.MathUtils.lerp(armStart, 2.25, t);
+      elbow.rotation.x = THREE.MathUtils.lerp(elbowStart, -0.75, t);
+      torso.rotation.x = -0.06 * t;
+    },
+    complete: () => {
+      // Schwung + Loslassen
+      tween({
+        duration: 0.26, ease: easeOut,
+        update: t => {
+          arm.rotation.x = THREE.MathUtils.lerp(2.25, -0.75, t);
+          elbow.rotation.x = THREE.MathUtils.lerp(-0.75, 0.05, t);
+          torso.rotation.x = THREE.MathUtils.lerp(-0.06, 0.09, t);
+        }
+      });
+
+      tween({
+        duration: 0.1, delay: 0.13,
+        complete: () => {
+          const start = new THREE.Vector3();
+          armThrow.hand.getWorldPosition(start);
+          if (heldBoule) { armThrow.hand.remove(heldBoule); heldBoule = null; }
+
+          const ball = new THREE.Mesh(bouleGeo, bouleMat);
+          ball.castShadow = true;
+          ball.position.copy(start);
+          scene.add(ball);
+          boules.push({ mesh: ball, dist: 0 });
+
+          const flightTime = 0.72;
+          const arcHeight = 1.15;
+          tween({
+            duration: flightTime,
+            update: t => {
+              ball.position.lerpVectors(start, landing, t);
+              ball.position.y = THREE.MathUtils.lerp(start.y, BOULE_R, t) + Math.sin(t * Math.PI) * arcHeight;
+              ball.rotation.x -= 0.22;
+              ball.rotation.z -= 0.09;
+            },
+            complete: () => {
+              spawnDust(landing);
+              const rollStart = ball.position.clone();
+              tween({
+                duration: 0.6, ease: easeOut,
+                update: t => {
+                  ball.position.lerpVectors(rollStart, final, t);
+                  ball.position.y = BOULE_R + Math.abs(Math.sin(t * Math.PI * 2)) * 0.035 * (1 - t);
+                  ball.rotation.x -= 0.08 * (1 - t * 0.6);
+                },
+                complete: () => {
+                  ball.position.y = BOULE_R;
+                  const d = Math.hypot(final.x - target.position.x, final.z - target.position.z);
+                  boules[boules.length - 1].dist = d;
+                  const best = Math.min(...boules.map(b => b.dist));
+                  scoreBig.textContent = Math.round(best * 100) + ' cm';
+                  scoreSmall.textContent = `${boules.length} von ${MAX_BOULES} Kugeln · bester Wurf`;
+                  tween({ duration: 0.55, delay: 0.25, complete: throwNextBoule });
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+  });
+}
+
+/* ============================================================
+   Kamera-Steuerung & Eingaben
+============================================================ */
+const camTarget = new THREE.Vector3(0, 0.55, 0);
+let azimuth = 0.18, elevation = 0.46, radius = 15.5;
+const defaultCam = { azimuth, elevation, radius };
+
+function updateCamera() {
+  const r = Math.cos(elevation) * radius;
+  camera.position.set(
+    camTarget.x + Math.sin(azimuth) * r,
+    camTarget.y + Math.sin(elevation) * radius,
+    camTarget.z + Math.cos(azimuth) * r
+  );
+  camera.lookAt(camTarget);
+}
+updateCamera();
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+function screenToGround(clientX, clientY) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.set(
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1
+  );
+  raycaster.setFromCamera(pointer, camera);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(groundPlane, hit)) return null;
+  return new THREE.Vector3(
+    THREE.MathUtils.clamp(hit.x, COURT.xMin + 0.25, COURT.xMax - 0.25),
+    0,
+    THREE.MathUtils.clamp(hit.z, COURT.zMin + 0.25, COURT.zMax - 0.25)
+  );
+}
+
+let down = null, dragged = false;
+const el = renderer.domElement;
+
+el.addEventListener('pointerdown', e => {
+  down = { x: e.clientX, y: e.clientY };
+  dragged = false;
+  try { el.setPointerCapture(e.pointerId); } catch { /* synthetische Events */ }
+});
+el.addEventListener('pointermove', e => {
+  if (down) {
+    const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (Math.abs(dx) + Math.abs(dy) > 5) dragged = true;
+    if (dragged) {
+      azimuth -= (e.clientX - (down.lastX ?? down.x)) * 0.005;
+      elevation = THREE.MathUtils.clamp(elevation + (e.clientY - (down.lastY ?? down.y)) * 0.004, 0.12, 1.25);
+      down.lastX = e.clientX; down.lastY = e.clientY;
+      hoverRing.visible = false;
+      updateCamera();
+    }
+  } else {
+    const p = screenToGround(e.clientX, e.clientY);
+    if (p) { hoverRing.position.set(p.x, 0.016, p.z); hoverRing.visible = true; }
+    else hoverRing.visible = false;
+  }
+});
+el.addEventListener('pointerup', e => {
+  if (!down) return;
+  if (!dragged) {
+    const p = screenToGround(e.clientX, e.clientY);
+    if (p) placeTarget(p);
+  }
+  down = null;
+});
+el.addEventListener('pointerleave', () => { if (!down) hoverRing.visible = false; });
+el.addEventListener('wheel', e => {
+  e.preventDefault();
+  radius = THREE.MathUtils.clamp(radius + Math.sign(e.deltaY) * 0.9, 6, 28);
+  updateCamera();
+}, { passive: false });
+
+addEventListener('keydown', e => {
+  if (e.key.toLowerCase() === 'r') {
+    azimuth = defaultCam.azimuth; elevation = defaultCam.elevation; radius = defaultCam.radius;
+    updateCamera();
+  }
+});
+
+document.getElementById('rethrow').addEventListener('click', () => {
+  if (!targetPlaced) { setStatus('Bitte zuerst das Ziel auf den Boden setzen'); return; }
+  clearBoules();
+  faceTarget();
+  setStatus('Neuer Wurf – Kugeln werden vorbereitet …');
+  tween({ duration: 0.3, complete: () => { setStatus(`Wurf 1 von ${MAX_BOULES}`); throwNextBoule(); } });
+});
+document.getElementById('reset').addEventListener('click', () => {
+  clearBoules();
+  targetPlaced = false;
+  target.position.set(0.5, COCHONNET_R, 0);
+  targetRing.position.set(0.5, 0.018, 0);
+  player.rotation.set(0, 0, 0);
+  hoverRing.visible = false;
+  setStatus('Klicke auf den Boden, um das Ziel zu setzen');
+});
+
+/* ------------------------------------------------------------
+   Sommer / Weihnachten umschalten
+------------------------------------------------------------ */
+function setChristmas(on) {
+  ground.material.map = on ? winterGroundTex : summerGroundTex;
+  ground.material.needsUpdate = true;
+  sky.material.uniforms.top.value.set(on ? 0x9dbfd8 : 0x59b4ee);
+  sky.material.uniforms.bottom.value.set(on ? 0xf7fbfd : 0xf2e7d4);
+  scene.fog.color.set(on ? 0xeef5f9 : 0xe8d7b8);
+  hemiLight.color.set(on ? 0xf2f8ff : 0xffffff);
+  hemiLight.groundColor.set(on ? 0xaebcc4 : 0x8d7655);
+  sun.color.set(on ? 0xf2f7ff : 0xfff2d8);
+  renderer.toneMappingExposure = on ? 1.08 : 1.15;
+  chalkMat.opacity = on ? 0.25 : 0.6;
+  circle.material.opacity = on ? 0.25 : 0.6;
+
+  // Outfit: Sommer = blaues T-Shirt, Glatze, Brille / Winter = roter Anzug
+  shirtMat.color.set(on ? 0xc62d2d : 0x2f6fb0);
+  shirtMat.needsUpdate = true;
+  pantsMat.color.set(on ? 0xc62d2d : 0x35485c);
+  shoeMat.color.set(on ? 0x2b2a21 : 0x4a3a2c);
+  beret.visible = nub.visible = brim.visible = false;
+  glasses.visible = !on;
+  santaGear.visible = on;
+  santaCuffs.forEach(c => { c.visible = on; });
+
+  reindeer.visible = on;
+  winterDecor.visible = on;
+  crateGroup.visible = !on;
+  snowFall.visible = on;
+
+  const label = document.getElementById('mode-label');
+  if (label) label.textContent = on ? '❄ Weihnachten' : '☀ Sommer';
+
+  // Titel, Bild und Bildunterschrift der Seite mitwechseln
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  setText('hero-title', on ? 'Winterliche Bahn.' : 'Sonnige Bahn.');
+  setText('hero-caption', on
+    ? 'Illustration: Weihnachtliche Stimmung auf der Kugelbahn.'
+    : 'Illustration: Wenn die Kugel perfekt am Cochonnet landet.');
+  const bubble = document.getElementById('bubble-one');
+  if (bubble) bubble.innerHTML = on ? 'Joyeux<br>Noël&nbsp;!' : 'Allez,<br>petite boule&nbsp;!';
+  const heroImg = document.getElementById('hero-img');
+  if (heroImg) {
+    heroImg.src = on ? 'weihnachtsmann.jpeg' : 'title.jpg';
+    heroImg.alt = on ? 'Comic-Illustration mit Weihnachtsmann' : 'Comic-Illustration zum Boule-Spiel';
+  }
+  document.title = on ? 'Winterliche Bahn – Boule & Co.' : 'Boule & Co. – Pétanque, Comic & Klickspiel';
+}
+document.getElementById('xmas-toggle').addEventListener('change', e => setChristmas(e.target.checked));
+setChristmas(false);
+
+function resizeScene() {
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (!w || !h) return;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+addEventListener('resize', resizeScene);
+new ResizeObserver(resizeScene).observe(wrap);
+
+/* ============================================================
+   Animationsschleife
+============================================================ */
+const clock = new THREE.Clock();
+let time = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  time += dt;
+
+  updateTweens(dt);
+
+  // weiche Puls- / Idle-Bewegungen
+  const pulse = 1 + Math.sin(time * 3.2) * 0.08;
+  targetRing.scale.setScalar(pulse);
+  targetRing.material.opacity = 0.65 + Math.sin(time * 3.2) * 0.2;
+  targetRing.position.y = 0.018 + Math.sin(time * 3.2) * 0.004;
+  hoverRing.scale.setScalar(1 + Math.sin(time * 5) * 0.05);
+
+  torso.position.y = 1.16 + Math.sin(time * 1.8) * 0.008;
+  head.position.y = 1.82 + Math.sin(time * 1.8) * 0.009;
+  if (targetPlaced) {
+    target.rotation.y += dt * 0.25;
+  }
+
+  if (snowFall.visible) {
+    const arr = snowGeo.attributes.position.array;
+    for (let i = 0; i < SNOW_COUNT; i++) {
+      arr[i * 3 + 1] -= dt * (0.55 + (i % 5) * 0.12);
+      arr[i * 3] += Math.sin(time * 0.7 + i) * dt * 0.08;
+      if (arr[i * 3 + 1] < 0.05) arr[i * 3 + 1] = 8 + Math.random() * 2;
+    }
+    snowGeo.attributes.position.needsUpdate = true;
+  }
+  if (reindeer.visible) {
+    deerHead.rotation.z = Math.sin(time * 1.7) * 0.09;
+    deerHead.rotation.x = Math.sin(time * 1.1) * 0.05;
+    deerTail.rotation.y = Math.sin(time * 6) * 0.5;
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
